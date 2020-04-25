@@ -44,8 +44,11 @@ class Hangman:
     
     def suggest(self) -> chr:
         '''pick the letter that eliminates the fewest options for the next round'''
+        # t0 = datetime.now()
         # restrict the corpus to words that fit the new criteria of knowns, positions, and rejects
         self.corpus = [word for word in self.corpus if word.iscandidate(self.knowns, self.known_chars, self.rejects)]
+        # t1 = datetime.now()
+        # print(f'executed query in {in_ms(t0, t1)}')
         # letters that remain to be guessed
         remaining = ALPHABET - self.rejects - self.known_chars
         # find the number of words in the corpus that contain each remaining character
@@ -98,6 +101,6 @@ end_time = datetime.now()
 print(f'Separated words by length {in_ms(start_time, end_time)}ms ({sys.getsizeof(corpus)} bytes)')
 
 
-to_guess = corpus[8][::1000]
+to_guess = corpus[4][::1000]
 for word in to_guess:
     play(word.entry, corpus[len(word)])
