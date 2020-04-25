@@ -1,80 +1,103 @@
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta
+import sys
 
+def in_ms(start: datetime, stop: datetime):
+    dt = stop - start
+    ms = (dt.days * 24 * 60 * 60 + dt.seconds) * 1000 + dt.microseconds / 1000.0
+    return ms
 
-with open('dictionary.txt', 'r') as dictfile:
-    corpus = [word.rstrip() for word in dictfile.readlines()]
+ALPHABET = set('abcdefghijklmnopqrstuvwxyz')
 
-# words = {word: set(char for char in word) for word in corpus}
+class Word:
+    def __init__(self, word):
+        self.entry = word
+        self.chars = set(char for char in word)
+        # self.complement = ALPHABET - self.chars
 
-words_by_length = defaultdict(list)
-for entry in corpus:
-    words_by_length[len(entry)].append(entry)
+    def __len__(self):
+        return len(self.entry)
 
-print('loaded all words')
-
-def get_candidates(knowns: [str], rejects: iter, candidates: [str]) -> list:
-    known_chars = set(char for char in knowns if char != '')
-    def is_candidate(word: str) -> bool:
-        for char in word:
-            if char in rejects:
-                return False
+    def iscandidate(self, knowns: [chr], known_chars: set, rejects: set) -> bool:
+        if known_chars.issubset(self.chars) == False:
+            return False
+        if rejects.isdisjoint(self.chars) == False:
+            return False
         for i in range(len(knowns)):
             if knowns[i] == '':
-                if word[i] in known_chars:
-                    # has a known letter in a palce that doesn't line up with `knowns`
-                    # eg knowns are ja__ but word is `java`
+                if self.entry[i] in known_chars:
                     return False
-                else:
-                    # no known letter for that spot
-                    # move on to next letter
-                    continue
-            if knowns[i] != word[i]:
-                # has a different letter in a certain place
+                continue
+            if knowns[i] != self.entry[i]:
                 return False
-        # blanks notwithstanding, has the same letters in the same places
         return True
 
-    return [word for word in candidates if is_candidate(word)]
 
-def suggest_next(knowns: [chr], rejects: [chr], candidates: [str]) -> ((chr, int), [str]):
-    known_chars = set(char for char in knowns if char != '')
-    new_candidates = get_candidates(knowns, rejects, candidates)
-    word_freqs = map(lambda word: Counter(word), new_candidates)
-    freqs = sum(word_freqs, Counter())
-    to_suggest = [(char, freq) for char, freq in dict(freqs).items() if char not in known_chars]
-    return max(to_suggest, key=lambda f: f[1], default=[]), new_candidates
-
-
-# freqs = map(lambda word: Counter(word), get_candidates(['r', '', 'r', '']))
-# print(sum(freqs, Counter()))
-
-# joyousness
-
-def guess_word(word):
-    knowns = ['' for _ in range(len(word))]
-    rejects = []
-    attempts = 0
-    candidates = words_by_length[len(word)]
-
-    while '' in knowns:
-        guess, candidates = suggest_next(knowns, rejects, candidates)
-        guess = guess[0]
-        if guess in word:
-            for i in range(len(word)):
-                if word[i] == guess:
-                    knowns[i] = guess
+class Hangman:
+    def __init__(self, answer: str, corpus: [Word]):
+        self.corpus = corpus
+        self.knowns = ['' for _ in range(len(answer))]
+        self.known_chars = set()
+        self.rejects = set()
+        self.answer = answer
+        self.attempts = 0
+    
+    def suggest(self) -> chr:
+        '''pick the letter that eliminates the fewest options for the next round'''
+        # restrict the corpus to words that fit the new criteria of knowns, positions, and rejects
+        self.corpus = [word for word in self.corpus if word.iscandidate(self.knowns, self.known_chars, self.rejects)]
+        # letters that remain to be guessed
+        remaining = ALPHABET - self.rejects - self.known_chars
+        # find the number of words in the corpus that contain each remaining character
+        candidates = {char: sum(1 for word in self.corpus if char in word.entry) for char in remaining}
+        # guess the character that appears in the most words in the corpus
+        suggestion = max(candidates, key=candidates.get, default='')
+        return suggestion
+    
+    def update(self, guess: chr) -> None:
+        if guess in self.answer:
+            # update knowns with the new letter
+            for i in range(len(self.answer)):
+                if self.answer[i] == guess:
+                    self.knowns[i] = guess
+            self.known_chars.add(guess)
         else:
-            rejects.append(guess)
-        attempts += 1
-    print(f'knowns: {knowns}, rejects: {rejects}, attempts: {attempts}')
+            self.rejects.add(guess)
+    
+    def guess(self) -> None:
+        self.attempts += 1
+        suggestion = self.suggest()
+        self.update(suggestion)
+        # print(f'attempt: {self.attempts}, guess: {suggestion}, knowns: {self.knowns}, rejects: {self.rejects}')
+    
+    def solved(self) -> bool:
+        return '' not in self.knowns
+    
+
+def play(word: str, corpus: [Word]):
+    start_time = datetime.now()
+    game = Hangman(word, corpus)
+    while game.solved() is False and game.attempts < 30:
+        game.guess()
+    end_time = datetime.now()
+    print(f'Solved {word} in {in_ms(start_time, end_time)}ms and {game.attempts} attempts, rejects: {game.rejects}')
+
+
+# load all words into memory and do some preprocessing
+start_time = datetime.now()
+with open('dictionary.txt', 'r') as dictfile:
+    all_words = [Word(word.rstrip()) for word in dictfile.readlines()]
+end_time = datetime.now()
+print(f'{len(all_words)} Word objects created in {in_ms(start_time, end_time)}ms ({sys.getsizeof(all_words)} bytes)')
 
 start_time = datetime.now()
-for entry in corpus[50000:50100:10]:
-    guess_word(entry)
-
+corpus = defaultdict(list)
+for word in all_words:
+    corpus[len(word)].append(word)
 end_time = datetime.now()
-dt = datetime.now() - start_time
-ms = (dt.days * 24 * 60 * 60 + dt.seconds) * 1000 + dt.microseconds / 1000.0
-print(ms)
-        
+print(f'Separated words by length {in_ms(start_time, end_time)}ms ({sys.getsizeof(corpus)} bytes)')
+
+
+to_guess = corpus[8][::1000]
+for word in to_guess:
+    play(word.entry, corpus[len(word)])
