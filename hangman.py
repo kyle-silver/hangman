@@ -101,6 +101,8 @@ end_time = datetime.now()
 print(f'Separated words by length {in_ms(start_time, end_time)}ms ({sys.getsizeof(corpus)} bytes)')
 
 
-to_guess = corpus[4][::1000]
+to_guess = corpus[8][::100]
 for word in to_guess:
     play(word.entry, corpus[len(word)])
+
+play('jazz', corpus[4])

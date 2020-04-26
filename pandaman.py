@@ -27,20 +27,6 @@ dataframes = {i: getdf(entries, i) for i, entries in corpus.items()}
 t1 = datetime.now()
 print(f'created dataframe in {in_ms(t0, t1)}ms')
 
-
-def candidate_query(df: pd.DataFrame, knowns: [chr], known_chars: iter, rejects: iter):
-    conditions = None
-    for i, char in enumerate(knowns):
-        col = str(i)
-        if char == '':
-            cond = ~df[col].isin(known_chars) & ~df[col].isin(rejects)
-        else:
-            cond = df[col].eq(char)
-        conditions = conditions & cond if conditions is not None else cond
-    return conditions
-
-ALPHABET = set('abcdefghijklmnopqrstuvwxyz')
-
 class Hangman:
     def __init__(self, answer: str, corpus: pd.DataFrame):
         self.df = corpus
@@ -61,16 +47,22 @@ class Hangman:
             conditions = conditions & cond if conditions is not None else cond
         return conditions
     
+    def most_freq_remaining(self):
+        # get a dataframe containing only the columns with unknown values
+        known_cols = [str(i) for i, char in enumerate(self.knowns) if char != '']
+        known_cols.append('word')
+        remaining = self.df.drop(columns=known_cols)
+        # find the most frequent letter among those columns
+        value_counts = remaining.apply(pd.Series.value_counts).sum(axis=1)
+        return value_counts.idxmax()
+        
+    
     def suggest(self) -> chr:
         '''pick the letter that eliminates the fewest options for the next round'''
         # restrict the corpus to words that fit the new criteria of knowns, positions, and rejects
         self.df = self.df[self.candidate_query()]
-        # letters that remain to be guessed
-        remaining = list(ALPHABET - self.rejects - self.known_chars)
-        # find the number of words in the corpus that contain each remaining character
-        candidates = {char: len(self.df[self.df.isin([char]).any(axis=1)]) for char in remaining}
         # guess the character that appears in the most words in the corpus
-        suggestion = max(candidates, key=candidates.get, default='')
+        suggestion = self.most_freq_remaining()
         return suggestion
     
     def update(self, guess: chr) -> None:
@@ -93,10 +85,6 @@ class Hangman:
         return '' not in self.knowns
 
 
-# len4 = dataframes[4]
-# len4 = len4[candidate_query(len4, ['j', 'a', '', ''], ['j', 'a'], ['t', 'r', 'e'])]
-# print(len(len4[len4.isin(['z']).any(axis=1)]))
-
 def play(word: str, corpus: pd.DataFrame):
     start_time = datetime.now()
     game = Hangman(word, corpus)
@@ -105,7 +93,6 @@ def play(word: str, corpus: pd.DataFrame):
     end_time = datetime.now()
     print(f'Solved {word} in {in_ms(start_time, end_time)}ms and {game.attempts} attempts, rejects: {game.rejects}')
 
-
-to_guess = corpus[4][::1000]
+to_guess = corpus[9][::100]
 for word in to_guess:
     play(word, dataframes[len(word)])
